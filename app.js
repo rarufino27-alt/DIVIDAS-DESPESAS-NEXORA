@@ -8,7 +8,7 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const iso=(d)=>{if(d instanceof Date)return new Date(d.getFullYear(),d.getMonth(),d.getDate(),12);if(!d)return new Date(NaN);const s=String(d).slice(0,10);return new Date(`${s}T12:00:00`)};
 function defaultDB(){return{balance:0,transactions:[],debts:[],cards:[],loans:[],recurring:[],cashbooks:[],categories:{receita:['Salário','Trabalho','Freelance','Investimentos','Outros'],despesa:['Moradia','Alimentação','Transporte','Saúde','Educação','Lazer','Assinaturas','Cartões','Empréstimos','Impostos','Outros']},settings:{theme:'light',project:'Gestão financeira NEXORA',weekMode:'seg-sex'}}}
 let db=(()=>{try{return JSON.parse(localStorage.getItem(KEY))||defaultDB()}catch{return defaultDB()}})();
-db.cashbooks=db.cashbooks||[]; db.transactions.forEach(x=>{if(x.paymentSource===undefined)x.paymentSource='';if(x.type==='receita'&&x.repayable===undefined)x.repayable=false}); db.debts.forEach(x=>{if(x.paymentSource===undefined)x.paymentSource=''}); db.loans.forEach(x=>{if(x.paymentSource===undefined)x.paymentSource=''}); Object.assign(db,defaultDB(),db,{settings:{...defaultDB().settings,...(db.settings||{})},categories:{...defaultDB().categories,...(db.categories||{})}});
+db.cashbooks=db.cashbooks||[]; db.transactions.forEach(x=>{if(x.paymentSource===undefined)x.paymentSource='';if(x.type==='receita'&&x.repayable===undefined)x.repayable=false}); db.debts.forEach(x=>{if(x.paymentSource===undefined)x.paymentSource=''}); db.loans.forEach(x=>{if(x.paymentSource===undefined)x.paymentSource=''}); Object.assign(db,defaultDB(),db,{settings:{...defaultDB().settings,...(db.settings||{})},categories:{...defaultDB().categories,...(db.categories||{})}}); db.settings.daysOff=Array.isArray(db.settings.daysOff)?db.settings.daysOff:[];
 let view='dashboard'; let editingId=null;
 function save(){localStorage.setItem(KEY,JSON.stringify(db))}
 function toast(msg){const t=$('#toast');t.textContent=msg;t.style.display='block';clearTimeout(window._toast);window._toast=setTimeout(()=>t.style.display='none',2200)}
@@ -172,9 +172,65 @@ function unifiedDashboard(){
 }
 let calendarCursor=currentMonth();
 function renderCalendarShift(delta){calendarCursor=shiftMonth(calendarCursor,delta);calendar(calendarCursor)}
-function calendar(m=calendarCursor){calendarCursor=m; const weeks=monthWeeks(m); const totalPay=db.transactions.filter(x=>monthKey(x.date)===m&&x.type==='despesa').reduce((a,x)=>a+num(x.value),0), totalRec=db.transactions.filter(x=>monthKey(x.date)===m&&x.type==='receita').reduce((a,x)=>a+num(x.value),0);
-  const weeksHtml=weeks.map(w=>{const items=db.transactions.filter(x=>x.date>=w.start&&x.date<=w.end);let cursor=iso(w.start),finish=iso(w.end);const dayHtml=[];while(cursor<=finish){const date=ymd(cursor),its=items.filter(x=>x.date===date),dayName=new Intl.DateTimeFormat('pt-BR',{weekday:'long'}).format(cursor);dayHtml.push(`<div class="calendar-day"><div class="calendar-day-head"><b>${dayName}</b><span>${fmtDate(date)}</span></div>${its.length?its.map(x=>`<div class="calendar-item ${x.type==='receita'?'receive':'pay'}"><div><strong>${x.type==='receita'?'À receber':'À pagar'}</strong>${x.type==='despesa'&&x.status==='atrasado'?`<small class="overdue-label">Prioridade ${esc(x.priority||'Média')}</small>`:''}<span>${esc(x.person||x.category||'Sem descrição')}</span><small>${esc(x.paymentSource?`Fonte: ${x.paymentSource}`:'')}</small></div><b>${money(x.value)}</b><button class="btn ${x.status==='pago'?'secondary':'primary'} mini" data-toggle-paid="${x.id}">${x.status==='pago'?'Reverter pago':'Marcar pago'}</button><button class="btn secondary mini" data-edit="${x.id}">Editar</button></div>`).join(''):`<div class="empty">Sem lançamentos</div>`}</div>`);cursor.setDate(cursor.getDate()+1)}const weekPay=items.filter(x=>x.type==='despesa').reduce((a,x)=>a+num(x.value),0),weekRec=items.filter(x=>x.type==='receita').reduce((a,x)=>a+num(x.value),0);return `<section class="calendar-week"><div class="calendar-week-head"><div><b>Semana ${w.n}</b><span>${fmtDate(w.start)} à ${fmtDate(w.end)}</span></div><div><b>${money(weekPay)}</b> a pagar • <b class="positive">${money(weekRec)}</b> a receber</div></div><div class="calendar-days">${dayHtml.join('')}</div></section>`}).join('');
-  layout('Calendário Financeiro',`<div class="hero"><div><small>CALENDÁRIO DO MÊS</small><h2>${monthName(m)} de ${yearKey(m)}</h2><small>Segunda a domingo • primeiro ao último dia do mês</small></div><div class="side"><small>TOTAL DO MÊS</small><br><b>${money(totalPay)}</b><br><small>A pagar • ${money(totalRec)} a receber</small></div></div><div class="calendar-controls"><button class="btn secondary" data-month-prev>‹ Mês anterior</button><span>${monthName(m)} / ${yearKey(m)}</span><button class="btn secondary" data-month-next>Próximo mês ›</button></div><div class="calendar-month">${weeksHtml}</div>`)
+function calendar(m=calendarCursor){
+  calendarCursor=m;
+  const weeks=monthWeeks(m), todayDate=iso(today()), isCurrentMonth=m===currentMonth();
+  const monthItems=db.transactions.filter(x=>monthKey(x.date)===m);
+  const unpaidPay=monthItems.filter(x=>x.type==='despesa'&&x.status!=='pago');
+  const unpaidRec=monthItems.filter(x=>x.type==='receita'&&x.status!=='pago');
+  const paidRec=monthItems.filter(x=>x.type==='receita'&&x.status==='pago');
+  const totalPay=unpaidPay.reduce((a,x)=>a+num(x.value),0);
+  const totalRec=unpaidRec.reduce((a,x)=>a+num(x.value),0);
+  const cash=currentBalance();
+  const outstandingAfterReceipts=Math.max(0,totalPay-totalRec-cash);
+  const monthStart=iso(`${m}-01`), monthLast=new Date(monthStart.getFullYear(),monthStart.getMonth()+1,0,12);
+  const startForDaily=isCurrentMonth&&todayDate>monthStart?todayDate:monthStart;
+  const availableDays=[]; let cursor=new Date(startForDaily); cursor.setHours(12,0,0,0);
+  while(cursor<=monthLast){const d=ymd(cursor);if(!db.settings.daysOff.includes(d))availableDays.push(d);cursor.setDate(cursor.getDate()+1)}
+  const dailyNeed=availableDays.length?outstandingAfterReceipts/availableDays.length:0;
+  const monthStatus=totalPay-totalRec<=0?'Cobertura prevista':cash>=totalPay-totalRec?'Caixa suficiente':'Necessidade de caixa';
+  const monthDaysOff=db.settings.daysOff.filter(d=>monthKey(d)===m);
+  const weekCurrent=w=>isCurrentMonth&&todayDate>=iso(w.start)&&todayDate<=iso(w.end);
+  const weeksHtml=weeks.map(w=>{
+    const items=db.transactions.filter(x=>x.date>=w.start&&x.date<=w.end);
+    const payOpen=items.filter(x=>x.type==='despesa'&&x.status!=='pago');
+    const recAll=items.filter(x=>x.type==='receita');
+    const recPending=recAll.filter(x=>x.status!=='pago');
+    const recPaid=recAll.filter(x=>x.status==='pago');
+    const weekPay=payOpen.reduce((a,x)=>a+num(x.value),0);
+    const weekRecPending=recPending.reduce((a,x)=>a+num(x.value),0);
+    const weekReceived=recPaid.reduce((a,x)=>a+num(x.value),0);
+    const weekDebt=Math.max(0,weekPay-weekReceived);
+    const weekIsCurrent=weekCurrent(w);
+    const weekStart=iso(w.start), weekEnd=iso(w.end);
+    const dailyStart=weekIsCurrent&&todayDate>weekStart?todayDate:weekStart;
+    const weekAvailable=[]; let wc=new Date(dailyStart); wc.setHours(12,0,0,0);
+    while(wc<=weekEnd){const d=ymd(wc);if(!db.settings.daysOff.includes(d))weekAvailable.push(d);wc.setDate(wc.getDate()+1)}
+    const weekDaily=weekAvailable.length?Math.max(0,weekDebt-weekRecPending)/weekAvailable.length:0;
+    let dayCursor=iso(w.start), finish=iso(w.end), dayHtml=[];
+    while(dayCursor<=finish){
+      const date=ymd(dayCursor), its=items.filter(x=>x.date===date), dayName=new Intl.DateTimeFormat('pt-BR',{weekday:'long'}).format(dayCursor), dayOff=db.settings.daysOff.includes(date), isToday=date===today();
+      dayHtml.push(`<div class="calendar-day ${isToday?'calendar-today':''} ${dayOff?'calendar-day-off':''}">
+        <div class="calendar-day-head"><div><b>${dayName}</b><span>${fmtDate(date)}</span></div><button class="btn ${dayOff?'primary':'secondary'} mini" data-toggle-dayoff="${date}">${dayOff?'Remover folga':'Folga'}</button></div>
+        ${its.length?its.map(x=>`<div class="calendar-item ${x.type==='receita'?'receive':'pay'} ${x.status==='atrasado'?'calendar-overdue':''}">
+          <div><strong>${x.type==='receita'?'À receber':'À pagar'}</strong>${x.type==='despesa'&&x.status==='atrasado'?`<small class="overdue-label">Prioridade ${esc(x.priority||'Média')}</small>`:''}<span>${esc(x.person||x.category||'Sem descrição')}</span><small>${esc(x.paymentSource?`Fonte: ${x.paymentSource}`:'')}</small></div>
+          <b>${money(x.value)}</b>
+          <div class="calendar-item-actions"><button class="btn ${x.status==='pago'?'secondary':'primary'} mini" data-toggle-paid="${x.id}">${x.status==='pago'?'Reverter pago':x.type==='receita'?'Marcar recebido':'Marcar pago'}</button><button class="btn secondary mini" data-edit="${x.id}">Editar</button></div>
+          <small>${statusPill(x.status,x.priority)}</small>
+        </div>`).join(''):`<div class="empty">Sem lançamentos</div>`}
+      </div>`);dayCursor.setDate(dayCursor.getDate()+1)
+    }
+    return `<section class="calendar-week ${weekIsCurrent?'calendar-week-current':''}">
+      <div class="calendar-week-head"><div><b>Semana ${w.n}${weekIsCurrent?' • SEMANA ATUAL':''}</b><span>${fmtDate(w.start)} à ${fmtDate(w.end)}</span></div><div class="calendar-week-summary"><span>Saldo devedor <b class="negative">${money(weekDebt)}</b></span><span>A pagar <b class="negative">${money(weekPay)}</b></span><span>A receber <b class="positive">${money(weekRecPending)}</b></span><span>Diária <b>${money(weekDaily)}</b></span></div></div>
+      <div class="calendar-days">${dayHtml.join('')}</div>
+      <div class="calendar-week-footer"><div><small>Total a pagar</small><b class="negative">${money(weekPay)}</b></div><div><small>Total a receber</small><b class="positive">${money(weekRecPending)}</b></div><div><small>Recebido no ciclo</small><b class="positive">${money(weekReceived)}</b></div><div><small>Saldo devedor da semana</small><b class="negative">${money(weekDebt)}</b></div><div><small>Diária restante</small><b>${money(weekDaily)}</b><span>${weekAvailable.length} dia(s) disponíveis</span></div></div>
+    </section>`
+  }).join('');
+  layout('Calendário Financeiro',`<div class="hero calendar-hero"><div><small>CALENDÁRIO FINANCEIRO</small><h2>${monthName(m)} de ${yearKey(m)}</h2><small>Segunda a domingo • pagamentos, recebimentos, caixa e metas do mês.</small></div><div class="side"><small>STATUS DO MÊS</small><br><b>${monthStatus}</b><br><small>${monthDaysOff.length} dia(s) de folga programado(s)</small></div></div>
+  <div class="calendar-controls"><button class="btn secondary" data-month-prev>‹ Mês anterior</button><span>${monthName(m)} / ${yearKey(m)}</span><button class="btn secondary" data-month-next>Próximo mês ›</button></div>
+  <div class="grid calendar-month-summary"><div class="card"><div class="label">Total a pagar</div><div class="value negative">${money(totalPay)}</div><small>Compromissos ainda não pagos</small></div><div class="card"><div class="label">Total a receber</div><div class="value positive">${money(totalRec)}</div><small>Receitas ainda previstas</small></div><div class="card"><div class="label">Em caixa</div><div class="value ${cash>=0?'positive':'negative'}">${money(cash)}</div><small>Saldo disponível atual</small></div><div class="card calendar-daily-highlight"><div class="label">Quanto preciso buscar por dia</div><div class="value">${money(dailyNeed)}</div><small>${availableDays.length} dia(s) disponíveis até o fim do ciclo • folgas descontadas</small></div></div>
+  <div class="card calendar-rule"><b>Como funciona a diária:</b> o NEXORA calcula o valor que ainda precisa ser coberto pelos compromissos em aberto, desconta o caixa disponível e as receitas previstas, e divide pelo número de dias disponíveis. Ao passar um dia, registrar uma receita, pagar uma conta ou marcar uma folga, o valor é recalculado automaticamente.</div>
+  <div class="calendar-month">${weeksHtml}</div>`)
 }
 
 function planning(){
@@ -193,6 +249,7 @@ function bindGlobal(){
   document.querySelectorAll('[data-new-card]').forEach(b=>b.onclick=()=>cardForm());document.querySelectorAll('[data-edit-card]').forEach(b=>b.onclick=()=>cardForm(b.dataset.editCard));document.querySelectorAll('[data-del-card]').forEach(b=>b.onclick=()=>{if(confirm('Excluir cartão?')){db.cards=db.cards.filter(x=>x.id!==b.dataset.delCard);save();render('movimentos')}});document.querySelectorAll('[data-card-purchase]').forEach(b=>b.onclick=()=>purchaseForm(b.dataset.cardPurchase));
   document.querySelectorAll('[data-new-loan]').forEach(b=>b.onclick=()=>loanForm());document.querySelectorAll('[data-edit-loan]').forEach(b=>b.onclick=()=>loanForm(b.dataset.editLoan));document.querySelectorAll('[data-del-loan]').forEach(b=>b.onclick=()=>{if(confirm('Excluir empréstimo e parcelas?')){const id=b.dataset.delLoan;db.loans=db.loans.filter(x=>x.id!==id);db.debts=db.debts.filter(x=>x.loanId!==id);db.transactions=db.transactions.filter(x=>x.loanId!==id);save();render('movimentos')}});
   document.querySelectorAll('[data-toggle-paid]').forEach(b=>b.onclick=()=>togglePaid(b.dataset.togglePaid));
+  document.querySelectorAll('[data-toggle-dayoff]').forEach(b=>b.onclick=()=>{const d=b.dataset.toggleDayoff;db.settings.daysOff=db.settings.daysOff||[];if(db.settings.daysOff.includes(d)){db.settings.daysOff=db.settings.daysOff.filter(x=>x!==d);toast('Folga removida')}else{db.settings.daysOff.push(d);toast('Dia marcado como folga; diária recalculada')}save();calendar(calendarCursor)});
   document.querySelectorAll('[data-month-prev]').forEach(b=>b.onclick=()=>renderCalendarShift(-1));
   document.querySelectorAll('[data-month-next]').forEach(b=>b.onclick=()=>renderCalendarShift(1));
   document.querySelectorAll('[data-receita-tab]').forEach(b=>b.onclick=()=>receitasPage(b.dataset.receitaTab));document.querySelectorAll('[data-receive]').forEach(b=>b.onclick=()=>{const x=db.transactions.find(z=>z.id===b.dataset.receive);if(x){x.status='pago';save();toast('Receita recebida e contabilizada');receitasPage('recebida')}});
