@@ -15,39 +15,91 @@ let supabaseWorkspaceId=null;
 let syncTimer=null;
 let syncInProgress=false;
 let syncReady=false;
+let syncDirty=false;
+let realtimeChannel=null;
+let lastRemoteUpdatedAt=localStorage.getItem(KEY+'_remote_updated_at')||'';
 function setSyncStatus(text,ok=false){const el=document.querySelector('#sync-status');if(el){el.textContent=text;el.classList.toggle('sync-ok',ok)}}
 function saveLocal(){localStorage.setItem(KEY,JSON.stringify(db))}
+function normalizeRemoteState(state){
+  const base=defaultDB();
+  const r=state&&typeof state==='object'?state:{};
+  const out={...base,...r,settings:{...base.settings,...(r.settings||{})},categories:{...base.categories,...(r.categories||{})}};
+  out.transactions=Array.isArray(out.transactions)?out.transactions:[];
+  out.debts=Array.isArray(out.debts)?out.debts:[];
+  out.cards=Array.isArray(out.cards)?out.cards:[];
+  out.loans=Array.isArray(out.loans)?out.loans:[];
+  out.recurring=Array.isArray(out.recurring)?out.recurring:[];
+  out.cashbooks=Array.isArray(out.cashbooks)?out.cashbooks:[];
+  out.cashbooks.forEach(c=>{c.entries=Array.isArray(c.entries)?c.entries:[]});
+  out.settings.daysOff=Array.isArray(out.settings.daysOff)?out.settings.daysOff:[];
+  return out;
+}
+function applyRemoteState(state,updatedAt){
+  db=normalizeRemoteState(state);
+  saveLocal();
+  if(updatedAt){lastRemoteUpdatedAt=updatedAt;localStorage.setItem(KEY+'_remote_updated_at',updatedAt)}
+}
+async function pullRemoteState({force=false}={}){
+  if(!supabaseClient||!supabaseWorkspaceId||syncDirty&&!force)return false;
+  const res=await supabaseClient.from('app_state').select('state,updated_at').eq('workspace_id',supabaseWorkspaceId).maybeSingle();
+  if(res.error)throw res.error;
+  if(!res.data)return false;
+  const remoteTime=res.data.updated_at||'';
+  if(force || !lastRemoteUpdatedAt || remoteTime>lastRemoteUpdatedAt){
+    applyRemoteState(res.data.state,remoteTime);
+    render(view);
+    return true;
+  }
+  return false;
+}
+function subscribeRealtime(){
+  if(!supabaseClient||!supabaseWorkspaceId)return;
+  if(realtimeChannel){try{supabaseClient.removeChannel(realtimeChannel)}catch{}}
+  realtimeChannel=supabaseClient.channel('nexora-app-state-'+supabaseWorkspaceId)
+    .on('postgres_changes',{event:'*',schema:'public',table:'app_state',filter:`workspace_id=eq.${supabaseWorkspaceId}`},payload=>{
+      const row=payload.new||null;
+      if(!row||!row.state)return;
+      const remoteTime=row.updated_at||'';
+      if(syncDirty && remoteTime!==lastRemoteUpdatedAt)return;
+      if(!lastRemoteUpdatedAt || remoteTime>=lastRemoteUpdatedAt){
+        applyRemoteState(row.state,remoteTime);
+        syncDirty=false;
+        setSyncStatus('V1.12 • Supabase sincronizado',true);
+        render(view);
+      }
+    })
+    .subscribe(status=>{
+      if(status==='SUBSCRIBED')setSyncStatus('V1.12 • Supabase conectado',true);
+    });
+}
 async function initSupabase(){
   try{
     if(!window.supabase||!window.supabase.createClient) throw new Error('Biblioteca Supabase não carregada');
-    supabaseClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
-    setSyncStatus('V1.11 • Supabase: conectando...');
+    supabaseClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false},global:{headers:{'x-nexora-client':'finance-nexora-v1.12'}}});
+    setSyncStatus('V1.12 • Supabase: conectando...');
     const wsRes=await supabaseClient.from('finance_workspaces').select('id').order('created_at',{ascending:true}).limit(1).maybeSingle();
-    if(wsRes.error) throw wsRes.error;
-    if(!wsRes.data||!wsRes.data.id) throw new Error('Nenhum workspace encontrado');
+    if(wsRes.error)throw wsRes.error;
+    if(!wsRes.data?.id)throw new Error('Nenhum workspace encontrado');
     supabaseWorkspaceId=wsRes.data.id;
     const stateRes=await supabaseClient.from('app_state').select('state,updated_at').eq('workspace_id',supabaseWorkspaceId).maybeSingle();
-    if(stateRes.error) throw stateRes.error;
-    const localCounts={transactions:(db.transactions||[]).length,debts:(db.debts||[]).length,cards:(db.cards||[]).length,loans:(db.loans||[]).length,cashbooks:(db.cashbooks||[]).length,balance:num(db.balance)};
-    const hasLocal=Object.values(localCounts).some(v=>v>0);
+    if(stateRes.error)throw stateRes.error;
     const remoteState=stateRes.data?.state||null;
-    const remoteCounts=remoteState?{transactions:(remoteState.transactions||[]).length,debts:(remoteState.debts||[]).length,cards:(remoteState.cards||[]).length,loans:(remoteState.loans||[]).length,cashbooks:(remoteState.cashbooks||[]).length,balance:num(remoteState.balance)}:null;
-    const remoteHasData=remoteCounts&&Object.values(remoteCounts).some(v=>v>0);
-    if(remoteHasData){
-      db={...defaultDB(),...remoteState,settings:{...defaultDB().settings,...(remoteState.settings||{})},categories:{...defaultDB().categories,...(remoteState.categories||{})}};
-      db.cashbooks=db.cashbooks||[]; db.cashbooks.forEach(c=>{c.entries=Array.isArray(c.entries)?c.entries:[]});
-      saveLocal();
-      syncReady=true;
-      setSyncStatus('V1.11 • Supabase conectado',true);
+    const remoteHasData=remoteState && Object.values(remoteState).some(v=>Array.isArray(v)?v.length>0:(typeof v==='number'?v!==0:false));
+    if(remoteState && (remoteHasData || !localStorage.getItem(KEY+'_remote_initialized'))){
+      applyRemoteState(remoteState,stateRes.data.updated_at);
+      localStorage.setItem(KEY+'_remote_initialized','1');
+      syncDirty=false;
       render(view);
-    }else{
-      syncReady=true;
+    }else if(!stateRes.data){
       await syncNow();
-      setSyncStatus('V1.11 • Supabase conectado',true);
     }
+    syncReady=true;
+    subscribeRealtime();
+    await pullRemoteState({force:false});
+    setSyncStatus('V1.12 • Supabase conectado',true);
   }catch(err){
     console.error('[NEXORA][SUPABASE]',err);
-    setSyncStatus('V1.11 • Supabase indisponível');
+    setSyncStatus('V1.12 • Supabase indisponível');
   }
 }
 async function syncNow(){
@@ -55,20 +107,31 @@ async function syncNow(){
   syncInProgress=true;
   try{
     const state=JSON.parse(JSON.stringify(db));
-    const res=await supabaseClient.from('app_state').upsert({workspace_id:supabaseWorkspaceId,state,updated_at:new Date().toISOString()},{onConflict:'workspace_id'});
+    const stamp=new Date().toISOString();
+    const res=await supabaseClient.from('app_state').upsert({workspace_id:supabaseWorkspaceId,state,updated_at:stamp},{onConflict:'workspace_id'});
     if(res.error)throw res.error;
-    setSyncStatus('V1.11 • Supabase sincronizado',true);
+    lastRemoteUpdatedAt=stamp;
+    localStorage.setItem(KEY+'_remote_updated_at',stamp);
+    localStorage.setItem(KEY+'_remote_initialized','1');
+    syncDirty=false;
+    setSyncStatus('V1.12 • Supabase sincronizado',true);
   }catch(err){
     console.error('[NEXORA][SYNC]',err);
-    setSyncStatus('V1.11 • erro de sincronização');
+    setSyncStatus('V1.12 • erro de sincronização');
   }finally{syncInProgress=false}
 }
 function queueSync(){
   if(!syncReady)return;
+  syncDirty=true;
   clearTimeout(syncTimer);
-  syncTimer=setTimeout(syncNow,350);
+  syncTimer=setTimeout(syncNow,250);
 }
+window.addEventListener('online',()=>{if(syncReady){syncDirty=true;syncNow().catch(()=>{})}});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&syncReady&&!syncDirty)pullRemoteState().catch(err=>console.error('[NEXORA][PULL]',err))});
+window.addEventListener('focus',()=>{if(syncReady&&!syncDirty)pullRemoteState().catch(err=>console.error('[NEXORA][PULL]',err))});
+window.addEventListener('pagehide',()=>{if(syncDirty)syncNow().catch(()=>{})});
 
+db.cashbooks=db.cashbooks||[]; db.cashbooks.forEach(c=>{c.entries=Array.isArray(c.entries)?c.entries:[]});
 db.cashbooks=db.cashbooks||[]; db.cashbooks.forEach(c=>{c.entries=Array.isArray(c.entries)?c.entries:[]}); db.transactions.forEach(x=>{if(x.paymentSource===undefined)x.paymentSource='';if(x.type==='receita'&&x.repayable===undefined)x.repayable=false}); db.debts.forEach(x=>{if(x.paymentSource===undefined)x.paymentSource=''}); db.loans.forEach(x=>{if(x.paymentSource===undefined)x.paymentSource=''}); Object.assign(db,defaultDB(),db,{settings:{...defaultDB().settings,...(db.settings||{})},categories:{...defaultDB().categories,...(db.categories||{})}}); db.settings.daysOff=Array.isArray(db.settings.daysOff)?db.settings.daysOff:[];
 let view='dashboard'; let editingId=null;
 function save(){saveLocal();queueSync()}
