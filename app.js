@@ -8,9 +8,70 @@ const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&
 const iso=(d)=>{if(d instanceof Date)return new Date(d.getFullYear(),d.getMonth(),d.getDate(),12);if(!d)return new Date(NaN);const s=String(d).slice(0,10);return new Date(`${s}T12:00:00`)};
 function defaultDB(){return{balance:0,transactions:[],debts:[],cards:[],loans:[],recurring:[],cashbooks:[],categories:{receita:['Salário','Trabalho','Freelance','Investimentos','Outros'],despesa:['Moradia','Alimentação','Transporte','Saúde','Educação','Lazer','Assinaturas','Cartões','Empréstimos','Impostos','Outros']},settings:{theme:'light',project:'Gestão financeira NEXORA',weekMode:'seg-sex'}}}
 let db=(()=>{try{return JSON.parse(localStorage.getItem(KEY))||defaultDB()}catch{return defaultDB()}})();
+const SUPABASE_URL='https://zowmlsusgnzqskuplxcu.supabase.co';
+const SUPABASE_KEY='sb_publishable_vkoEbQBCeSDsoFRZxJ4VoA_gVWhQf5M';
+let supabaseClient=null;
+let supabaseWorkspaceId=null;
+let syncTimer=null;
+let syncInProgress=false;
+let syncReady=false;
+function setSyncStatus(text,ok=false){const el=document.querySelector('#sync-status');if(el){el.textContent=text;el.classList.toggle('sync-ok',ok)}}
+function saveLocal(){localStorage.setItem(KEY,JSON.stringify(db))}
+async function initSupabase(){
+  try{
+    if(!window.supabase||!window.supabase.createClient) throw new Error('Biblioteca Supabase não carregada');
+    supabaseClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}});
+    setSyncStatus('V1.11 • Supabase: conectando...');
+    const wsRes=await supabaseClient.from('finance_workspaces').select('id').order('created_at',{ascending:true}).limit(1).maybeSingle();
+    if(wsRes.error) throw wsRes.error;
+    if(!wsRes.data||!wsRes.data.id) throw new Error('Nenhum workspace encontrado');
+    supabaseWorkspaceId=wsRes.data.id;
+    const stateRes=await supabaseClient.from('app_state').select('state,updated_at').eq('workspace_id',supabaseWorkspaceId).maybeSingle();
+    if(stateRes.error) throw stateRes.error;
+    const localCounts={transactions:(db.transactions||[]).length,debts:(db.debts||[]).length,cards:(db.cards||[]).length,loans:(db.loans||[]).length,cashbooks:(db.cashbooks||[]).length,balance:num(db.balance)};
+    const hasLocal=Object.values(localCounts).some(v=>v>0);
+    const remoteState=stateRes.data?.state||null;
+    const remoteCounts=remoteState?{transactions:(remoteState.transactions||[]).length,debts:(remoteState.debts||[]).length,cards:(remoteState.cards||[]).length,loans:(remoteState.loans||[]).length,cashbooks:(remoteState.cashbooks||[]).length,balance:num(remoteState.balance)}:null;
+    const remoteHasData=remoteCounts&&Object.values(remoteCounts).some(v=>v>0);
+    if(remoteHasData){
+      db={...defaultDB(),...remoteState,settings:{...defaultDB().settings,...(remoteState.settings||{})},categories:{...defaultDB().categories,...(remoteState.categories||{})}};
+      db.cashbooks=db.cashbooks||[]; db.cashbooks.forEach(c=>{c.entries=Array.isArray(c.entries)?c.entries:[]});
+      saveLocal();
+      syncReady=true;
+      setSyncStatus('V1.11 • Supabase conectado',true);
+      render(view);
+    }else{
+      syncReady=true;
+      await syncNow();
+      setSyncStatus('V1.11 • Supabase conectado',true);
+    }
+  }catch(err){
+    console.error('[NEXORA][SUPABASE]',err);
+    setSyncStatus('V1.11 • Supabase indisponível');
+  }
+}
+async function syncNow(){
+  if(!supabaseClient||!supabaseWorkspaceId||syncInProgress)return;
+  syncInProgress=true;
+  try{
+    const state=JSON.parse(JSON.stringify(db));
+    const res=await supabaseClient.from('app_state').upsert({workspace_id:supabaseWorkspaceId,state,updated_at:new Date().toISOString()},{onConflict:'workspace_id'});
+    if(res.error)throw res.error;
+    setSyncStatus('V1.11 • Supabase sincronizado',true);
+  }catch(err){
+    console.error('[NEXORA][SYNC]',err);
+    setSyncStatus('V1.11 • erro de sincronização');
+  }finally{syncInProgress=false}
+}
+function queueSync(){
+  if(!syncReady)return;
+  clearTimeout(syncTimer);
+  syncTimer=setTimeout(syncNow,350);
+}
+
 db.cashbooks=db.cashbooks||[]; db.cashbooks.forEach(c=>{c.entries=Array.isArray(c.entries)?c.entries:[]}); db.transactions.forEach(x=>{if(x.paymentSource===undefined)x.paymentSource='';if(x.type==='receita'&&x.repayable===undefined)x.repayable=false}); db.debts.forEach(x=>{if(x.paymentSource===undefined)x.paymentSource=''}); db.loans.forEach(x=>{if(x.paymentSource===undefined)x.paymentSource=''}); Object.assign(db,defaultDB(),db,{settings:{...defaultDB().settings,...(db.settings||{})},categories:{...defaultDB().categories,...(db.categories||{})}}); db.settings.daysOff=Array.isArray(db.settings.daysOff)?db.settings.daysOff:[];
 let view='dashboard'; let editingId=null;
-function save(){localStorage.setItem(KEY,JSON.stringify(db))}
+function save(){saveLocal();queueSync()}
 function toast(msg){const t=$('#toast');t.textContent=msg;t.style.display='block';clearTimeout(window._toast);window._toast=setTimeout(()=>t.style.display='none',2200)}
 function fmtDate(d){if(!d)return'—';return new Intl.DateTimeFormat('pt-BR').format(iso(d))}
 function monthKey(d){return d.slice(0,7)}
@@ -322,137 +383,5 @@ function unifiedDashboard(){
 }
 function render(v=view){view=v;const fn={dashboard:unifiedDashboard,caixa:cashbook,movimentos:debtsExpenses,receitas:()=>receitasPage(),planejamento:planning,calendario:calendar,relatorios:reports,config};(fn[v]||unifiedDashboard)();document.querySelectorAll('.nav').forEach(n=>n.classList.toggle('active',n.dataset.view===v))}
 
-
-/* SUPABASE INTEGRATION V1.11 — sem login/cadastro.
-   O aplicativo continua abrindo diretamente. O banco usa o workspace único
-   criado no Supabase. O localStorage funciona como cache/offline e o Supabase
-   passa a ser a fonte persistente quando estiver disponível. */
-const SUPABASE_URL='https://zowmlsusgnzqskuplxcu.supabase.co';
-const SUPABASE_KEY='sb_publishable_vkoEbQBCeSDsoFRZxJ4VoA_gVWhQf5M';
-const SUPABASE_REST=`${SUPABASE_URL}/rest/v1`;
-let REMOTE_WS=null;
-let SUPABASE_ONLINE=false;
-let SUPABASE_SYNCING=false;
-const sbHeaders=()=>({apikey:SUPABASE_KEY,Authorization:`Bearer ${SUPABASE_KEY}`, 'Content-Type':'application/json',Prefer:'return=representation'});
-async function sbFetch(path,options={}){
-  const r=await fetch(`${SUPABASE_REST}${path}`,{...options,headers:{...sbHeaders(),...(options.headers||{})}});
-  const text=await r.text();
-  let data=null; try{data=text?JSON.parse(text):null}catch{data=text}
-  if(!r.ok) throw new Error((data&&data.message)||data?.hint||`Supabase HTTP ${r.status}`);
-  return data;
-}
-async function sbGet(table,query=''){return sbFetch(`/${table}${query}`)}
-async function sbPost(table,body){return sbFetch(`/${table}`,{method:'POST',body:JSON.stringify(body)})}
-async function sbPatch(table,query,body){return sbFetch(`/${table}${query}`,{method:'PATCH',body:JSON.stringify(body)})}
-async function sbDelete(table,query){return sbFetch(`/${table}${query}`,{method:'DELETE',body:undefined})}
-const q=v=>encodeURIComponent(String(v));
-function mapLocalStatusToRemote(type,status){if(type==='receita')return status==='pago'?'recebida':status==='cancelado'?'cancelada':'prevista';return status==='pago'?'pago':status==='atrasado'?'atrasado':status==='cancelado'?'cancelado':status==='pendente'?'pendente':'previsto'}
-function mapRemoteStatusToLocal(type,status){if(type==='receita')return status==='recebida'?'pago':status==='cancelada'?'cancelado':'previsto';return status||'previsto'}
-async function sbBootstrap(){
-  try{
-    const ws=await sbGet('finance_workspaces','?select=*&order=created_at.asc&limit=1');
-    if(!ws?.length) throw new Error('Nenhum workspace encontrado. Execute o SQL do Supabase primeiro.');
-    REMOTE_WS=ws[0];
-    const [sources,cats,contacts,receipts,commitments,debts,loans,cards,purchases,inst,registers,movements,settings]=await Promise.all([
-      sbGet('financial_sources',`?workspace_id=eq.${q(REMOTE_WS.id)}&select=*`),
-      sbGet('financial_categories',`?workspace_id=eq.${q(REMOTE_WS.id)}&select=*`),
-      sbGet('financial_contacts',`?workspace_id=eq.${q(REMOTE_WS.id)}&select=*`),
-      sbGet('receipts',`?workspace_id=eq.${q(REMOTE_WS.id)}&select=*`),
-      sbGet('financial_commitments',`?workspace_id=eq.${q(REMOTE_WS.id)}&select=*`),
-      sbGet('debts',`?workspace_id=eq.${q(REMOTE_WS.id)}&select=*`),
-      sbGet('loans',`?workspace_id=eq.${q(REMOTE_WS.id)}&select=*`),
-      sbGet('credit_cards',`?workspace_id=eq.${q(REMOTE_WS.id)}&select=*`),
-      sbGet('credit_card_purchases',`?workspace_id=eq.${q(REMOTE_WS.id)}&select=*`),
-      sbGet('installments',`?workspace_id=eq.${q(REMOTE_WS.id)}&select=*`),
-      sbGet('cash_registers',`?workspace_id=eq.${q(REMOTE_WS.id)}&select=*&order=business_date.desc`),
-      sbGet('cash_movements',`?workspace_id=eq.${q(REMOTE_WS.id)}&select=*&order=occurred_at.desc`),
-      sbGet('project_settings',`?workspace_id=eq.${q(REMOTE_WS.id)}&select=*`)
-    ]);
-    const hasRemoteData=receipts.length||commitments.length||debts.length||loans.length||cards.length||registers.length;
-    if(!hasRemoteData && (db.transactions.length||db.debts.length||db.loans.length||db.cards.length||db.cashbooks.length||db.balance)){
-      SUPABASE_ONLINE=true; await sbSyncAll();
-    }else{
-      SUPABASE_ONLINE=true; sbApplyRemote({sources,cats,contacts,receipts,commitments,debts,loans,cards,purchases,inst,registers,movements,settings}); saveLocalOnly();
-    }
-  }catch(err){
-    SUPABASE_ONLINE=false;
-    console.warn('Supabase indisponível; usando dados locais.',err);
-  }
-}
-function saveLocalOnly(){localStorage.setItem(KEY,JSON.stringify(db))}
-function ensureLocalId(x){if(!x.id)x.id=crypto.randomUUID?crypto.randomUUID():uid();return x.id}
-function sbApplyRemote(r){
-  const catMap={receita:r.cats.filter(x=>x.kind==='receita').map(x=>x.name),despesa:r.cats.filter(x=>x.kind==='despesa').map(x=>x.name)};
-  db.balance=num(REMOTE_WS.initial_balance); db.categories={...db.categories, ...catMap};
-  db.transactions=[];
-  r.receipts.forEach(x=>db.transactions.push({id:x.legacy_id||x.id,date:x.due_date||today(),value:num(x.amount),category:(r.cats.find(c=>c.id===x.category_id)?.name)||'',person:(r.contacts.find(c=>c.id===x.contact_id)?.name)||x.origin_name,paymentSource:(r.sources.find(s=>s.id===x.source_id)?.name)||'',status:mapRemoteStatusToLocal('receita',x.status),weekAssigned:weekOf(x.due_date||today()),note:x.notes||'',type:'receita',repayable:!!x.needs_repayment,repayDate:x.repayment_due_date||'',remoteId:x.id}));
-  r.commitments.forEach(x=>db.transactions.push({id:x.legacy_id||x.id,date:x.due_date||today(),value:num(x.amount),category:(r.cats.find(c=>c.id===x.category_id)?.name)||'',person:(r.contacts.find(c=>c.id===x.creditor_id)?.name)||'',paymentSource:(r.sources.find(s=>s.id===x.payment_source_id)?.name)||'',status:mapRemoteStatusToLocal('despesa',x.status),priority:x.priority,weekAssigned:weekOf(x.due_date||today()),note:x.notes||'',type:'despesa',remoteId:x.id}));
-  db.debts=r.debts.map(x=>({id:x.legacy_id||x.id,remoteId:x.id,creditor:(r.contacts.find(c=>c.id===x.creditor_id)?.name)||'',value:num(x.original_amount),totalPayable:num(x.original_amount),remaining:num(x.current_amount),firstDate:x.first_due_date||'',status:x.status,kind:'Dívida',paymentSource:(r.sources.find(s=>s.id===x.payment_source_id)?.name)||'',note:x.notes||''}));
-  db.loans=r.loans.map(x=>({id:x.legacy_id||x.id,remoteId:x.id,person:(r.contacts.find(c=>c.id===x.creditor_id)?.name)||x.lender_name||'',value:num(x.received_amount),installments:x.installment_count,installmentValue:num(x.installment_amount),totalPayable:num(x.total_to_pay),firstDate:x.first_due_date||today(),status:x.status,cardId:x.credit_card_id||null,paymentSource:(r.sources.find(s=>s.id===x.payment_source_id)?.name)||'',note:x.notes||''}));
-  db.cards=r.cards.map(x=>({id:x.legacy_id||x.id,remoteId:x.id,name:x.name,bank:x.issuer||'',limit:num(x.limit_amount),close:num(x.closing_day||1),due:num(x.due_day||10),note:x.notes||'',purchases:[]}));
-  db.cashbooks=r.registers.map(c=>({id:c.legacy_id||c.id,remoteId:c.id,date:c.business_date,opening:num(c.opening_balance),closedAt:c.closed_at?new Date(c.closed_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'',openedAt:c.opened_at?new Date(c.opened_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}):'',entries:r.movements.filter(m=>m.cash_register_id===c.id).map(m=>({id:m.legacy_id||m.id,remoteId:m.id,type:m.direction==='entrada'?'entrada':'saida',value:num(m.amount),description:m.description,source:m.origin_destination||'',category:(r.cats.find(k=>k.id===m.category_id)?.name)||'',time:new Date(m.occurred_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}),note:m.notes||''}))}));
-  const settings=r.settings?.[0]; if(settings)db.settings.theme=settings.theme==='dark'?'dark':'light'; db.settings.project=REMOTE_WS.name;
-}
-function sourceRemoteId(name,type){const x=(window.__sbSources||[]).find(s=>s.name===name);return x?.id||null}
-function catRemoteId(name,kind){const x=(window.__sbCats||[]).find(c=>c.name===name&&c.kind===kind);return x?.id||null}
-function contactRemoteId(name,kind='outro'){const x=(window.__sbContacts||[]).find(c=>c.name===name);return x?.id||null}
-async function sbEnsureLookups(){
-  window.__sbSources=await sbGet('financial_sources',`?workspace_id=eq.${q(REMOTE_WS.id)}&select=*`);
-  window.__sbCats=await sbGet('financial_categories',`?workspace_id=eq.${q(REMOTE_WS.id)}&select=*`);
-  window.__sbContacts=await sbGet('financial_contacts',`?workspace_id=eq.${q(REMOTE_WS.id)}&select=*`);
-}
-async function sbEnsureContact(name,kind='outro'){if(!name)return null;let id=contactRemoteId(name,kind);if(id)return id;const rows=await sbPost('financial_contacts',{workspace_id:REMOTE_WS.id,name,kind});id=rows?.[0]?.id;window.__sbContacts.push(rows[0]);return id}
-async function sbEnsureSource(name){if(!name)return null;let id=sourceRemoteId(name);if(id)return id;const rows=await sbPost('financial_sources',{workspace_id:REMOTE_WS.id,name,type:'outro'});id=rows?.[0]?.id;window.__sbSources.push(rows[0]);return id}
-async function sbEnsureCategory(name,kind){if(!name)return null;let id=catRemoteId(name,kind);if(id)return id;const rows=await sbPost('financial_categories',{workspace_id:REMOTE_WS.id,name,kind});id=rows?.[0]?.id;window.__sbCats.push(rows[0]);return id}
-async function sbSyncAll(){
-  if(!SUPABASE_ONLINE||!REMOTE_WS||SUPABASE_SYNCING)return; SUPABASE_SYNCING=true;
-  try{
-    await sbEnsureLookups();
-    // Projeto/configuração
-    await sbPatch('finance_workspaces',`?id=eq.${q(REMOTE_WS.id)}`,{name:db.settings.project||'Gestão financeira NEXORA',currency:'BRL',initial_balance:num(db.balance)});
-    // Receitas/despesas principais
-    const remoteReceipts=await sbGet('receipts',`?workspace_id=eq.${q(REMOTE_WS.id)}&select=legacy_id,id`);
-    const remoteCommitments=await sbGet('financial_commitments',`?workspace_id=eq.${q(REMOTE_WS.id)}&select=legacy_id,id`);
-    const rr=new Map(remoteReceipts.filter(x=>x.legacy_id).map(x=>[x.legacy_id,x.id])); const rc=new Map(remoteCommitments.filter(x=>x.legacy_id).map(x=>[x.legacy_id,x.id]));
-    for(const x of db.transactions){
-      if(x.cashbookClosing)continue;
-      const kind=x.type==='receita'?'receita':'despesa'; const cat=await sbEnsureCategory(x.category,kind==='receita'?'receita':'despesa'); const contact=await sbEnsureContact(x.person,kind==='receita'?'pessoa_fisica':'instituicao'); const source=await sbEnsureSource(x.paymentSource);
-      if(kind==='receita'){
-        const body={workspace_id:REMOTE_WS.id,legacy_id:x.id,category_id:cat,source_id:source,contact_id:contact,description:x.note||x.category||'Receita',origin_name:x.person||'Receita',amount:num(x.value),due_date:x.date,received_at:x.status==='pago'?new Date().toISOString():null,status:mapLocalStatusToRemote('receita',x.status),needs_repayment:!!x.repayable,repayment_due_date:x.repayDate||null,notes:x.note||null};
-        if(rr.has(x.id))await sbPatch('receipts',`?id=eq.${q(rr.get(x.id))}`,body);else await sbPost('receipts',body);
-      }else{
-        const body={workspace_id:REMOTE_WS.id,legacy_id:x.id,category_id:cat,creditor_id:contact,payment_source_id:source,description:x.note||x.category||'Despesa',kind:'despesa',amount:num(x.value),due_date:x.date,payment_source_id:source,status:mapLocalStatusToRemote('despesa',x.status),priority:x.priority||'normal',paid_at:x.status==='pago'?new Date().toISOString():null,notes:x.note||null};
-        if(rc.has(x.id))await sbPatch('financial_commitments',`?id=eq.${q(rc.get(x.id))}`,body);else await sbPost('financial_commitments',body);
-      }
-    }
-    // Cartões
-    const remoteCards=await sbGet('credit_cards',`?workspace_id=eq.${q(REMOTE_WS.id)}&select=legacy_id,id`); const cm=new Map(remoteCards.filter(x=>x.legacy_id).map(x=>[x.legacy_id,x.id]));
-    for(const c of db.cards){const body={workspace_id:REMOTE_WS.id,legacy_id:c.id,name:c.name,issuer:c.bank||null,limit_amount:num(c.limit),closing_day:num(c.close)||null,due_day:num(c.due)||null,active:true,notes:c.note||null}; if(cm.has(c.id))await sbPatch('credit_cards',`?id=eq.${q(cm.get(c.id))}`,body);else await sbPost('credit_cards',body)}
-    // Dívidas
-    const remoteDebts=await sbGet('debts',`?workspace_id=eq.${q(REMOTE_WS.id)}&select=legacy_id,id`);const dm=new Map(remoteDebts.filter(x=>x.legacy_id).map(x=>[x.legacy_id,x.id]));
-    for(const d of db.debts.filter(x=>!x.loanId&&!x.cardId)){const creditor=await sbEnsureContact(d.creditor,'instituicao');const source=await sbEnsureSource(d.paymentSource);const body={workspace_id:REMOTE_WS.id,legacy_id:d.id,creditor_id:creditor,payment_source_id:source,description:d.note||d.kind||'Dívida',original_amount:num(d.totalPayable||d.value),current_amount:debtRemaining(d.id),status:d.status==='pago'?'quitada':(d.status==='ativo'?'aberta':'prevista'),first_due_date:d.firstDate||null,notes:d.note||null};if(dm.has(d.id))await sbPatch('debts',`?id=eq.${q(dm.get(d.id))}`,body);else await sbPost('debts',body)}
-    // Empréstimos
-    const remoteLoans=await sbGet('loans',`?workspace_id=eq.${q(REMOTE_WS.id)}&select=legacy_id,id`);const lm=new Map(remoteLoans.filter(x=>x.legacy_id).map(x=>[x.legacy_id,x.id]));
-    for(const l of db.loans){const creditor=await sbEnsureContact(l.person,'instituicao');const source=await sbEnsureSource(l.paymentSource);const body={workspace_id:REMOTE_WS.id,legacy_id:l.id,lender_name:l.person||'Empréstimo',creditor_id:creditor,amount_received:num(l.value),installment_count:Math.max(1,num(l.installments)),installment_amount:num(l.installmentValue),first_due_date:l.firstDate||null,status:l.status==='recebido'?'received':l.status==='quitado'?'settled':'planned',payment_source_id:source,notes:l.note||null};if(l.cardId){const c=db.cards.find(z=>z.id===l.cardId);if(c){const cards=await sbGet('credit_cards',`?workspace_id=eq.${q(REMOTE_WS.id)}&legacy_id=eq.${q(c.id)}&select=id`);if(cards?.[0])body.credit_card_id=cards[0].id}}if(lm.has(l.id))await sbPatch('loans',`?id=eq.${q(lm.get(l.id))}`,body);else await sbPost('loans',body)}
-    // Livro caixa
-    const remoteRegs=await sbGet('cash_registers',`?workspace_id=eq.${q(REMOTE_WS.id)}&select=legacy_id,id`);const rm=new Map(remoteRegs.filter(x=>x.legacy_id).map(x=>[x.legacy_id,x.id]));
-    for(const c of (db.cashbooks||[])){const body={workspace_id:REMOTE_WS.id,legacy_id:c.id,business_date:c.date,opening_balance:num(c.opening),status:c.closedAt?'fechado':'aberto',closed_at:c.closedAt?new Date().toISOString():null};let rid=rm.get(c.id);if(rid)await sbPatch('cash_registers',`?id=eq.${q(rid)}`,body);else {const ins=await sbPost('cash_registers',body);rid=ins?.[0]?.id}if(rid){for(const e of (c.entries||[])){const bodyM={cash_register_id:rid,workspace_id:REMOTE_WS.id,direction:e.type==='entrada'?'entrada':'saida',amount:num(e.value),description:e.description||'Movimentação',origin_destination:e.source||null,category_id:await sbEnsureCategory(e.category||'Outras despesas',e.type==='entrada'?'receita':'despesa'),occurred_at:new Date().toISOString(),notes:e.note||null,legacy_id:e.id};const ex=await sbGet('cash_movements',`?workspace_id=eq.${q(REMOTE_WS.id)}&legacy_id=eq.${q(e.id)}&select=id`);if(ex?.[0])await sbPatch('cash_movements',`?id=eq.${q(ex[0].id)}`,bodyM);else await sbPost('cash_movements',bodyM)}}}
-  }catch(err){console.error('Falha na sincronização Supabase:',err);throw err}finally{SUPABASE_SYNCING=false}
-}
-const originalSave=save;
-save=function(){originalSave(); if(SUPABASE_ONLINE) sbSyncAll().catch(err=>console.warn('Sincronização pendente:',err));};
-
-async function initApp(){try{
-  normalizeOverdue();
-  document.body.classList.toggle('dark',db.settings.theme==='dark');
-  const theme=$('#theme'); if(theme)theme.textContent=db.settings.theme==='dark'?'☀':'☾';
-  const open=$('#open-menu'),close=$('#close-menu'),side=$('#sidebar');
-  if(open)open.onclick=()=>side.classList.add('open');
-  if(close)close.onclick=()=>side.classList.remove('open');
-  if(theme)theme.onclick=()=>{db.settings.theme=db.settings.theme==='dark'?'light':'dark';save();document.body.classList.toggle('dark',db.settings.theme==='dark');theme.textContent=db.settings.theme==='dark'?'☀':'☾'};
-  await sbBootstrap();
-  render();
-  const badge=document.querySelector('.side-foot'); if(badge)badge.textContent=SUPABASE_ONLINE?'V1.11 • Supabase conectado':'V1.11 • modo local (Supabase indisponível)';
-  if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});
-}catch(err){console.error('GESTÃO FINANCEIRA NEXORA init error:',err);const c=$('#content');if(c)c.innerHTML=`<div class="card"><h3>Não foi possível carregar o aplicativo.</h3><p>${esc(err.message||'Erro desconhecido')}</p></div>`}}
+function initApp(){try{normalizeOverdue();document.body.classList.toggle('dark',db.settings.theme==='dark');const theme=$('#theme');if(theme)theme.textContent=db.settings.theme==='dark'?'☀':'☾';const open=$('#open-menu'),close=$('#close-menu'),side=$('#sidebar');if(open)open.onclick=()=>side.classList.add('open');if(close)close.onclick=()=>side.classList.remove('open');if(theme)theme.onclick=()=>{db.settings.theme=db.settings.theme==='dark'?'light':'dark';save();document.body.classList.toggle('dark',db.settings.theme==='dark');theme.textContent=db.settings.theme==='dark'?'☀':'☾'};render();initSupabase();if('serviceWorker' in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{});}catch(err){console.error('FINANCE NEXORA init error:',err);const c=$('#content');if(c)c.innerHTML=`<div class="card"><h3>Não foi possível carregar o aplicativo.</h3><p>Abra o console para verificar o erro técnico.</p></div>`}}
 if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',initApp);else initApp();
