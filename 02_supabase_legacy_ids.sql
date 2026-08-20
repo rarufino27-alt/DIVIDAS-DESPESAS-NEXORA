@@ -1,0 +1,26 @@
+-- Execute depois do schema principal. Necessário para sincronizar o app sem login.
+ALTER TABLE public.financial_sources ADD COLUMN IF NOT EXISTS legacy_id text;
+ALTER TABLE public.financial_categories ADD COLUMN IF NOT EXISTS legacy_id text;
+ALTER TABLE public.financial_contacts ADD COLUMN IF NOT EXISTS legacy_id text;
+ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS legacy_id text;
+ALTER TABLE public.financial_commitments ADD COLUMN IF NOT EXISTS legacy_id text;
+ALTER TABLE public.debts ADD COLUMN IF NOT EXISTS legacy_id text;
+ALTER TABLE public.loans ADD COLUMN IF NOT EXISTS legacy_id text;
+ALTER TABLE public.credit_cards ADD COLUMN IF NOT EXISTS legacy_id text;
+ALTER TABLE public.credit_card_purchases ADD COLUMN IF NOT EXISTS legacy_id text;
+ALTER TABLE public.installments ADD COLUMN IF NOT EXISTS legacy_id text;
+ALTER TABLE public.cash_registers ADD COLUMN IF NOT EXISTS legacy_id text;
+ALTER TABLE public.cash_movements ADD COLUMN IF NOT EXISTS legacy_id text;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_sources_workspace_legacy ON public.financial_sources(workspace_id, legacy_id) WHERE legacy_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_categories_workspace_legacy ON public.financial_categories(workspace_id, legacy_id) WHERE legacy_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_contacts_workspace_legacy ON public.financial_contacts(workspace_id, legacy_id) WHERE legacy_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_receipts_workspace_legacy ON public.receipts(workspace_id, legacy_id) WHERE legacy_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_commitments_workspace_legacy ON public.financial_commitments(workspace_id, legacy_id) WHERE legacy_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_debts_workspace_legacy ON public.debts(workspace_id, legacy_id) WHERE legacy_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_loans_workspace_legacy ON public.loans(workspace_id, legacy_id) WHERE legacy_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_cards_workspace_legacy ON public.credit_cards(workspace_id, legacy_id) WHERE legacy_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_purchases_workspace_legacy ON public.credit_card_purchases(workspace_id, legacy_id) WHERE legacy_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_installments_workspace_legacy ON public.installments(workspace_id, legacy_id) WHERE legacy_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_cash_registers_workspace_legacy ON public.cash_registers(workspace_id, legacy_id) WHERE legacy_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS ux_cash_movements_workspace_legacy ON public.cash_movements(workspace_id, legacy_id) WHERE legacy_id IS NOT NULL;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.financial_sources, public.financial_categories, public.financial_contacts, public.receipts, public.financial_commitments, public.debts, public.loans, public.credit_cards, public.credit_card_purchases, public.installments, public.cash_registers, public.cash_movements TO anon;
