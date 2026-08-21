@@ -1,15 +1,14 @@
-# Gestão financeira NEXORA V1.11
+# RAFLO FINANCE V1.19
 
-## Livro Caixa
-O Livro Caixa agora é um módulo próprio no menu lateral, logo abaixo do Dashboard.
+Base: Gestão Financeira NEXORA V1.15 enviada pelo usuário.
 
-Fluxo diário:
-1. Abrir caixa do dia.
-2. Registrar todas as entradas e saídas do dia.
-3. Editar ou excluir movimentos enquanto o caixa estiver aberto.
-4. Fechar o caixa.
-5. O resultado líquido do dia (entradas - saídas) é lançado automaticamente em Receitas como o fechamento do Livro Caixa.
+## Alterações desta versão
+- Nome e identidade visual: RAFLO FINANCE.
+- Refinamento visual minimalista e responsivo, sem remoção dos módulos ou fluxos existentes.
+- Menu lateral e cabeçalho compactados.
+- Cartões, empréstimos, dívidas/despesas, Livro Caixa, Receitas, Planejamento, Calendário Financeiro, Relatórios, Configurações, autenticação, workspace, Supabase, Realtime e cache/offline preservados.
+- Pagamento recorrente passa a ser uma opção de "Tipo de pagamento" no lançamento: Único, Parcelado ou Recorrente — mesmo valor e mesma data.
+- A estrutura existente `db.recurring` é reutilizada; não foi criada uma nova tabela Supabase nesta versão.
 
-Resultado positivo gera uma receita positiva. Resultado negativo gera uma receita líquida negativa, reduzindo o saldo financeiro corretamente.
-
-O fechamento não duplica os movimentos individuais: os movimentos ficam registrados dentro do Livro Caixa e apenas o resultado líquido é consolidado no fluxo financeiro ao fechar.
+## Importante
+Nenhuma migration do Supabase é necessária para a V1.19. A versão reaproveita a estrutura de estado e sincronização já existente na V1.15.
