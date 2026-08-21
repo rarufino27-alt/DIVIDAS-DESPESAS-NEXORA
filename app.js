@@ -64,36 +64,35 @@ function subscribeRealtime(){
       if(!lastRemoteUpdatedAt || remoteTime>=lastRemoteUpdatedAt){
         applyRemoteState(row.state,remoteTime);
         syncDirty=false;
-        setSyncStatus('V1.14 • Supabase sincronizado',true);
+        setSyncStatus('V1.15 • Supabase sincronizado',true);
         render(view);
       }
     })
     .subscribe(status=>{
-      if(status==='SUBSCRIBED')setSyncStatus('V1.14 • Supabase conectado',true);
+      if(status==='SUBSCRIBED')setSyncStatus('V1.15 • Supabase conectado',true);
     });
 }
 function normalizePhone(raw){
   let d=String(raw||'').replace(/\D/g,'');
   if(d.startsWith('55') && d.length>=12)d=d.slice(2);
   if(d.length===10||d.length===11)return '+55'+d;
-  return raw.trim().startsWith('+')?'+'+d:'+'+d;
+  return String(raw||'').trim();
 }
+function normalizeEmail(raw){return String(raw||'').trim().toLowerCase()}
 function authErrorMessage(err){
   const m=String(err?.message||err||'');
-  if(/invalid login credentials/i.test(m))return 'Celular ou senha incorretos.';
-  if(/user already registered|already registered|phone_exists/i.test(m))return 'Este número de celular já está cadastrado.';
+  if(/invalid login credentials/i.test(m))return 'E-mail ou senha incorretos.';
+  if(/user already registered|already registered/i.test(m))return 'Este e-mail já está cadastrado.';
   if(/password.*(6|characters|length)/i.test(m))return 'A senha deve ter pelo menos 6 caracteres.';
-  if(/phone.*disabled|provider_disabled/i.test(m))return 'O login por celular ainda não está habilitado no Supabase.';
+  if(/email.*disabled|provider_disabled/i.test(m))return 'O cadastro por e-mail ainda não está habilitado no Supabase.';
   return m||'Não foi possível concluir a operação.';
 }
 function showAuth(mode='login',message=''){
   const app=document.querySelector('.app'); if(app)app.style.display='none';
   let box=document.querySelector('#auth-screen');
-  if(!box){
-    box=document.createElement('section');box.id='auth-screen';document.body.prepend(box);
-  }
+  if(!box){box=document.createElement('section');box.id='auth-screen';document.body.prepend(box)}
   const isReg=mode==='register';
-  box.innerHTML=`<div class="auth-shell"><div class="auth-brand"><img src="./assets/nexora-finance-logo.png" alt="Gestão financeira NEXORA"><span>GESTÃO FINANCEIRA NEXORA</span></div><div class="auth-card"><div class="auth-kicker">${isReg?'COMECE SEU CONTROLE':'BEM-VINDO DE VOLTA'}</div><h1>${isReg?'Criar sua conta':'Entrar no NEXORA'}</h1><p class="auth-sub">${isReg?'Cadastre seu celular e crie sua senha. Não exigiremos confirmação neste primeiro estágio.':'Acesse suas finanças em qualquer dispositivo.'}</p>${message?`<div class="auth-alert">${esc(message)}</div>`:''}<form id="auth-form" class="auth-form">${isReg?`<label>Nome completo<input id="auth-name" autocomplete="name" required placeholder="Seu nome"></label>`:''}<label>Número de celular<input id="auth-phone" inputmode="tel" autocomplete="tel" required placeholder="(81) 99999-9999"></label><label>Senha<input id="auth-password" type="password" minlength="6" autocomplete="${isReg?'new-password':'current-password'}" required placeholder="Mínimo de 6 caracteres"></label>${isReg?`<label>Confirmar senha<input id="auth-password2" type="password" minlength="6" autocomplete="new-password" required placeholder="Repita sua senha"></label>`:''}<button class="btn primary auth-submit" type="submit">${isReg?'Criar conta':'Entrar'}</button></form><div class="auth-switch">${isReg?'Já possui uma conta?':'Ainda não possui uma conta?'} <button type="button" id="auth-switch">${isReg?'Entrar':'Criar conta'}</button></div></div><div class="auth-foot">Seus dados financeiros ficam vinculados à sua conta no Supabase.</div></div>`;
+  box.innerHTML=`<div class="auth-shell"><div class="auth-brand"><img src="./assets/nexora-finance-logo.png" alt="Gestão financeira NEXORA"><span>GESTÃO FINANCEIRA NEXORA</span></div><div class="auth-card"><div class="auth-kicker">${isReg?'COMECE SEU CONTROLE':'BEM-VINDO DE VOLTA'}</div><h1>${isReg?'Criar sua conta':'Entrar no NEXORA'}</h1><p class="auth-sub">${isReg?'Cadastre seu e-mail, telefone e crie sua senha. O telefone ficará vinculado ao seu perfil.':'Acesse suas finanças em qualquer dispositivo.'}</p>${message?`<div class="auth-alert">${esc(message)}</div>`:''}<form id="auth-form" class="auth-form">${isReg?`<label>Nome completo<input id="auth-name" autocomplete="name" required placeholder="Seu nome"></label>`:''}<label>E-mail<input id="auth-email" type="email" autocomplete="email" required placeholder="voce@exemplo.com"></label>${isReg?`<label>Número de celular<input id="auth-phone" inputmode="tel" autocomplete="tel" required placeholder="(81) 99999-9999"></label>`:''}<label>Senha<input id="auth-password" type="password" minlength="6" autocomplete="${isReg?'new-password':'current-password'}" required placeholder="Mínimo de 6 caracteres"></label>${isReg?`<label>Confirmar senha<input id="auth-password2" type="password" minlength="6" autocomplete="new-password" required placeholder="Repita sua senha"></label>`:''}<button class="btn primary auth-submit" type="submit">${isReg?'Criar conta':'Entrar'}</button></form><div class="auth-switch">${isReg?'Já possui uma conta?':'Ainda não possui uma conta?'} <button type="button" id="auth-switch">${isReg?'Entrar':'Criar conta'}</button></div></div><div class="auth-foot">Seus dados financeiros ficam vinculados à sua conta no Supabase.</div></div>`;
   box.style.display='grid';
   document.querySelector('#auth-switch').onclick=()=>showAuth(isReg?'login':'register');
   document.querySelector('#auth-form').onsubmit=async e=>{
@@ -102,15 +101,16 @@ function showAuth(mode='login',message=''){
       if(isReg){
         const p1=document.querySelector('#auth-password').value,p2=document.querySelector('#auth-password2').value;
         if(p1!==p2)throw new Error('As senhas não conferem.');
+        const email=normalizeEmail(document.querySelector('#auth-email').value);
         const phone=normalizePhone(document.querySelector('#auth-phone').value);
         const name=document.querySelector('#auth-name').value.trim();
-        const {data,error}=await supabaseClient.auth.signUp({phone,password:p1,options:{data:{full_name:name}}});
+        const {data,error}=await supabaseClient.auth.signUp({email,password:p1,options:{data:{full_name:name,phone}}});
         if(error)throw error;
-        if(!data.session){showAuth('login','Conta criada. Se o Supabase estiver configurado para exigir confirmação, será necessário desativar a confirmação do telefone em Authentication → Providers.');return;}
+        if(!data.session){showAuth('login','Conta criada. Se a confirmação de e-mail estiver ativada no Supabase, confirme o e-mail antes de entrar.');return;}
         await startAuthenticatedApp(data.session.user);
       }else{
-        const phone=normalizePhone(document.querySelector('#auth-phone').value),password=document.querySelector('#auth-password').value;
-        const {data,error}=await supabaseClient.auth.signInWithPassword({phone,password});
+        const email=normalizeEmail(document.querySelector('#auth-email').value),password=document.querySelector('#auth-password').value;
+        const {data,error}=await supabaseClient.auth.signInWithPassword({email,password});
         if(error)throw error; await startAuthenticatedApp(data.user);
       }
     }catch(err){console.error('[NEXORA][AUTH]',err);showAuth(isReg?'register':'login',authErrorMessage(err));}
@@ -122,7 +122,7 @@ function showUserMenu(user){
   let el=document.querySelector('#user-panel');
   if(!el){el=document.createElement('div');el.id='user-panel';side.insertBefore(el,side.querySelector('.side-foot'));}
   const name=esc(user?.user_metadata?.full_name||'Usuário NEXORA');
-  const phone=esc(user?.phone||'');
+  const phone=esc(user?.user_metadata?.phone||user?.phone||'');
   el.innerHTML=`<div class="user-avatar">${name.charAt(0).toUpperCase()}</div><div class="user-meta"><b>${name}</b><small>${phone}</small></div><button id="logout-btn" title="Sair">↪</button>`;
   document.querySelector('#logout-btn').onclick=async()=>{await supabaseClient.auth.signOut();location.reload()};
 }
@@ -156,15 +156,15 @@ async function startAuthenticatedApp(user){
 }
 async function connectUserWorkspace(){
   try{
-    setSyncStatus('V1.14 • Supabase: conectando...');
+    setSyncStatus('V1.15 • Supabase: conectando...');
     await ensureWorkspace();
     const stateRes=await supabaseClient.from('app_state').select('state,updated_at').eq('workspace_id',supabaseWorkspaceId).maybeSingle();
     if(stateRes.error)throw stateRes.error;
     const remoteState=stateRes.data?.state||null;
     if(remoteState){applyRemoteState(remoteState,stateRes.data.updated_at);syncDirty=false;render(view)}
     else {await syncNow()}
-    syncReady=true;subscribeRealtime();await pullRemoteState({force:false});setSyncStatus('V1.14 • Supabase conectado',true);
-  }catch(err){console.error('[NEXORA][SUPABASE]',err);setSyncStatus('V1.14 • Supabase indisponível');toast(authErrorMessage(err))}
+    syncReady=true;subscribeRealtime();await pullRemoteState({force:false});setSyncStatus('V1.15 • Supabase conectado',true);
+  }catch(err){console.error('[NEXORA][SUPABASE]',err);setSyncStatus('V1.15 • Supabase indisponível');toast(authErrorMessage(err))}
 }
 async function initSupabase(){
   if(!window.supabase||!window.supabase.createClient)throw new Error('Biblioteca Supabase não carregada');
@@ -186,10 +186,10 @@ async function syncNow(){
     localStorage.setItem(KEY+'_remote_updated_at',stamp);
     localStorage.setItem(KEY+'_remote_initialized','1');
     syncDirty=false;
-    setSyncStatus('V1.14 • Supabase sincronizado',true);
+    setSyncStatus('V1.15 • Supabase sincronizado',true);
   }catch(err){
     console.error('[NEXORA][SYNC]',err);
-    setSyncStatus('V1.14 • erro de sincronização');
+    setSyncStatus('V1.15 • erro de sincronização');
   }finally{syncInProgress=false}
 }
 function queueSync(){
@@ -532,7 +532,7 @@ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',
 
 
 /* ============================================================
-   NEXORA V1.14 — UX FINALIZATION / ORGANIZAÇÃO FINANCEIRA
+   NEXORA V1.15 — UX FINALIZATION / ORGANIZAÇÃO FINANCEIRA
    Interface simplificada, cartões por aba, calendário financeiro
    agrupado por semanas e livro caixa com formulário imediato.
    ============================================================ */

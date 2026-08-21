@@ -1,12 +1,14 @@
-# Gestão financeira NEXORA V1.13
+# Gestão Financeira NEXORA — autenticação V1.15
 
-## Autenticação
-- Cadastro: nome, celular e senha.
-- Login: celular + senha.
-- Sem confirmação de telefone nesta fase.
+## Desenvolvimento atual
+- Login: e-mail + senha
+- Cadastro: nome + e-mail + telefone + senha
+- O telefone é armazenado no perfil e não é usado como provedor de autenticação nesta fase.
+- Para entrar imediatamente após o cadastro, desative **Confirm email** em Authentication > Sign In / Providers > Email.
 
 ## Supabase
-Execute `04_auth_phone_login.sql` no SQL Editor.
-Depois, no Supabase Dashboard: Authentication > Providers > Phone: habilite Phone e deixe Confirm phone desativado.
+Execute `06_auth_email_login.sql` depois das etapas de workspace/autenticação já concluídas.
+Depois mantenha `05_supabase_security_hardening.sql` para RLS, permissões e Realtime.
 
-A chave publishable permanece no frontend. Nunca coloque service_role/secret key no aplicativo.
+## Futuro comercial
+Quando houver provedor SMS configurado, podemos migrar o login para telefone + senha sem alterar o vínculo de workspace/dados.

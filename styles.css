@@ -31,7 +31,7 @@
 @media(max-width:600px){#auth-screen{padding:16px}.auth-card{padding:21px;border-radius:18px}.auth-card h1{font-size:24px}.auth-brand img{width:125px;max-height:90px}}
 
 /* ============================================================
-   NEXORA V1.14 — visual final: simples, profissional, responsivo
+   NEXORA V1.15 — visual final: simples, profissional, responsivo
    ============================================================ */
 :root{--nx-blue:#0b68d8;--nx-green:#12a66a;--nx-ink:#10284b;--nx-muted:#71849a;--nx-line:#dce7ee;--nx-soft:#f5f9fc;--nx-danger:#d94252}
 .page-intro{display:flex;justify-content:space-between;align-items:center;gap:20px;margin-bottom:16px;padding:22px 24px;border:1px solid var(--nx-line);border-radius:18px;background:linear-gradient(135deg,#fff,#f5fbfa);box-shadow:0 8px 26px rgba(16,40,75,.06)}
