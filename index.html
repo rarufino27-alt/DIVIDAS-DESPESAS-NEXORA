@@ -1,1 +1,17 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#071d42"><link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="assets/raflo-logo.svg"><title>RAFLO FINANCE</title><link rel="stylesheet" href="styles.css"></head><body><div id="app"><aside id="drawer"><div class="logo"><img src="assets/raflo-logo.svg"><button onclick="drawer(false)">×</button></div><nav id="nav"></nav><div class="user"><b>R</b><span>Usuário<small>Conta de teste</small></span></div></aside><div id="shade" onclick="drawer(false)"></div><main><header><button class="hamb" onclick="drawer(true)">☰</button><div class="title"><span>RAFLO FINANCE</span></div><button class="theme" onclick="theme()">☾</button></header><section id="page"></section></main></div><script src="app.js"></script></body></html>
+<!doctype html>
+<html lang="pt-BR"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#071d42"><link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="assets/raflo-logo.svg"><title>RAFLO FINANCE</title><link rel="stylesheet" href="styles.css">
+</head><body><div id="app">
+<aside id="drawer">
+  <div class="drawer-top"><img src="assets/raflo-logo.svg"><button onclick="closeMenu()">×</button></div>
+  <div class="drawer-brand">RAFLO <span>FINANCE</span></div>
+  <nav id="nav"></nav>
+  <div class="account"><div class="avatar">R</div><div><strong>Rafael</strong><small>Minha conta</small></div><button>›</button></div>
+</aside>
+<div id="shade" onclick="closeMenu()"></div>
+<main>
+<header><button class="hamb" onclick="openMenu()">☰</button><div class="top-title">RAFLO FINANCE</div><button class="theme" onclick="toggleTheme()">☾</button></header>
+<div id="page"></div>
+</main></div><script src="app.js"></script></body></html>

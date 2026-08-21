@@ -1,9 +1,13 @@
-RAFLO FINANCE V1.16 — interface minimalista mobile
-- Nova identidade RAFLO FINANCE.
-- Menu lateral reduzido e responsivo.
-- Livro Caixa no menu.
-- Dashboard simplificado.
-- Cadastro local de recorrentes para validar UX.
-- SQL separado para criar recorrentes no Supabase.
+RAFLO FINANCE V1.17 — redesign mobile/desktop
+Foco: interface mais compacta, inspirada em apps de mobilidade como Uber:
+- hierarquia tipográfica menor;
+- menos cartões gigantes;
+- navegação lateral mais estreita;
+- menu alinhado à identidade RAFLO;
+- alto contraste e ações diretas;
+- mobile com menu lateral compacto;
+- dashboard mais denso;
+- Livro Caixa e recorrentes mantidos;
+- calendário com semana atual em destaque.
 
-Esta versão é uma etapa de UI/UX e regras. A sincronização definitiva com Supabase deve ser ligada após a validação da interface, para evitar misturar dados locais com a nova autenticação.
+Nesta etapa a estrutura visual é prioridade. Não executar migration de Supabase desta versão até validar o layout.
