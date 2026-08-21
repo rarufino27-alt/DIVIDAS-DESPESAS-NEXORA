@@ -41,12 +41,78 @@
 @media(max-width:1000px){.quick-grid{grid-template-columns:1fr 1fr}.quick-cash-form{grid-template-columns:1fr 1fr}.quick-cash-form button{grid-column:1/-1}.finance-week-footer{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:700px){.page-intro{padding:16px;align-items:flex-start;flex-direction:column}.page-intro h2{font-size:21px}.intro-actions,.month-nav{width:100%}.intro-actions .btn{flex:1}.card-profile{align-items:flex-start;flex-direction:column}.card-profile-actions{width:100%}.card-profile-actions .btn{flex:1}.quick-grid{grid-template-columns:1fr 1fr}.week-head-metrics{display:grid;grid-template-columns:repeat(3,1fr);width:100%;gap:7px}.finance-week-head{display:block}.finance-week-head h3{font-size:14px;margin-bottom:10px}.finance-week-footer{grid-template-columns:1fr 1fr}.creditor-line{align-items:flex-start}.creditor-main span{line-height:1.45}.quick-cash-form{grid-template-columns:1fr 1fr}.quick-cash-form input:nth-of-type(2){grid-column:1/-1}.quick-cash-form input:nth-of-type(3){grid-column:1/-1}.quick-cash-form select{grid-column:1/-1}.cash-result{text-align:left}.module-tabs{margin-left:-4px;margin-right:-4px}.table-wrap{overflow-x:auto}}
 
-/* RAFLO FINANCE V1.19 — somente refinamento visual, sem remover módulos/fluxos */
-:root{--raflo-blue:#1267d9;--raflo-teal:#12a890;--raflo-navy:#071d42;--raflo-bg:#f6f8fa}
-.sidebar{width:232px;padding:12px 10px;background:var(--raflo-navy)}
-.brand{padding:0 4px 13px;margin-bottom:5px}.brand-logo{max-width:150px;max-height:72px;width:auto;box-shadow:none;border-radius:8px}
-.nav{padding:9px 11px;margin:1px 0;border-radius:8px;font-size:13px}.nav:hover,.nav.active{background:#fff;color:var(--raflo-navy);box-shadow:none}.side-foot{padding:9px 10px;font-size:9px}
-main{margin-left:232px;width:calc(100% - 232px);padding:17px 22px}.top{margin-bottom:16px}.top span{color:var(--raflo-teal);font-size:8px}.top h1{font-size:24px;margin:2px 0}.theme{width:37px;height:37px;border-radius:8px}
-.hero{border-radius:11px;padding:17px 18px;box-shadow:0 5px 18px rgba(8,54,91,.08)}.hero h2{font-size:31px}.grid{gap:9px;margin:10px 0}.card{border-radius:10px;padding:13px;box-shadow:0 3px 12px rgba(10,67,77,.05)}.value{font-size:20px}.section{margin-top:11px}
-.table-wrap{border-radius:9px}.table th,.table td{padding:9px 10px;font-size:11px}.table th{font-size:9px}.form{gap:9px}.field input,.field select,.field textarea{padding:9px;border-radius:8px}.btn{padding:9px 12px;border-radius:8px;font-size:11px}
-@media(max-width:900px){main{padding:12px 11px 24px}.sidebar{width:min(285px,82vw)}.brand-logo{max-width:135px;max-height:65px}.hero{padding:15px;border-radius:10px}.hero h2{font-size:27px}.grid{gap:7px}.card{padding:11px}.value{font-size:18px}.top h1{font-size:21px}}
+/* ============================================================
+   RAFLO FINANCE V1.20 — correção de layout responsivo
+   Base preservada; apenas o enquadramento mobile foi corrigido.
+   ============================================================ */
+html,body{width:100%;max-width:100%;min-width:0;overflow-x:hidden}
+body{min-height:100vh}
+.app{width:100%;max-width:100vw;min-width:0;overflow-x:hidden}
+main{min-width:0;max-width:100%;flex:1}
+.content,#content{min-width:0;max-width:100%}
+.top{min-width:0}
+.top-title{min-width:0}
+.top-title span,.top-title h1{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+img{max-width:100%}
+
+/* Em aparelhos touch, não dependemos da largura CSS do WebView para ativar o modo móvel. */
+@media (pointer:coarse), (max-width:900px){
+  html,body{width:100%;overflow-x:hidden}
+  .app{display:block;width:100%;max-width:100vw;overflow-x:hidden}
+  .sidebar{width:min(300px,86vw);max-width:86vw;transform:translateX(-110%);padding:16px 12px}
+  .sidebar.open{transform:translateX(0)}
+  .brand{padding:0 4px 14px;margin-bottom:10px}
+  .brand-logo{width:78px;height:78px;max-width:78px;border-radius:12px;box-shadow:0 6px 18px rgba(0,0,0,.14)}
+  .nav{font-size:14px;padding:11px 12px;margin:2px 0;border-radius:10px}
+  .side-foot{font-size:9px}
+  .close-menu{display:grid;place-items:center}
+  main{margin:0!important;width:100%!important;max-width:100%!important;padding:10px 14px 28px!important;overflow-x:hidden}
+  .top{width:100%;max-width:100%;gap:10px;margin-bottom:14px;align-items:center}
+  .hamb{display:grid;place-items:center;flex:0 0 42px;width:42px;height:42px;font-size:21px;padding:0}
+  .top-title{flex:1;min-width:0}
+  .top-title span{font-size:8px;letter-spacing:.13em}
+  .top h1{font-size:24px;line-height:1.1;margin:3px 0 0}
+  .theme{flex:0 0 42px}
+  .hero{width:100%;max-width:100%;padding:17px;border-radius:16px;display:block;overflow:hidden}
+  .hero h2{font-size:32px;line-height:1.05;margin:7px 0}
+  .hero .side{text-align:left;margin-top:12px}
+  .grid{width:100%;max-width:100%;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:12px 0}
+  .card{min-width:0;padding:12px;border-radius:13px;overflow:hidden}
+  .label{font-size:9px;line-height:1.2}
+  .value{font-size:18px;line-height:1.1;overflow-wrap:anywhere}
+  .card small{font-size:10px;line-height:1.35}
+  .dashboard-panels{grid-template-columns:1fr!important}
+  .overview-strip{grid-template-columns:1fr 1fr!important}
+  .dashboard-kpis{grid-template-columns:1fr 1fr!important}
+  .table-wrap{width:100%;max-width:100%;overflow-x:auto}
+  .table{min-width:620px}
+  .form{grid-template-columns:1fr!important}
+  .page-intro{width:100%;max-width:100%;padding:15px;border-radius:15px;overflow:hidden}
+  .page-intro.compact h2{font-size:21px}
+  .quick-grid{grid-template-columns:1fr 1fr!important}
+  .quick-action{min-width:0;padding:12px}
+  .finance-week{width:100%;max-width:100%;overflow:hidden}
+  .finance-week-head{display:block;padding:14px}
+  .week-head-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));width:100%;gap:6px}
+  .week-head-metrics>div{min-width:0}
+  .finance-week-body{padding:4px 12px}
+  .finance-week-footer{grid-template-columns:1fr 1fr}
+  .creditor-line{min-width:0}
+  .creditor-main{min-width:0}
+  .creditor-main b,.creditor-main span{overflow-wrap:anywhere}
+  .quick-cash-form{grid-template-columns:1fr 1fr!important}
+  .quick-cash-form input,.quick-cash-form select{min-width:0}
+  .cash-result{text-align:left}
+  .days-grid{grid-template-columns:1fr!important}
+  .tabs,.module-tabs,.entity-tabs{max-width:100%;overflow-x:auto}
+}
+
+@media (max-width:420px){
+  main{padding-left:10px!important;padding-right:10px!important}
+  .grid,.dashboard-kpis,.overview-strip,.quick-grid{grid-template-columns:1fr 1fr!important}
+  .hero h2{font-size:29px}
+  .top h1{font-size:22px}
+  .card{padding:11px}
+  .value{font-size:17px}
+  .week-head-metrics{grid-template-columns:1fr 1fr 1fr}
+}
