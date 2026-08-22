@@ -275,3 +275,55 @@ drop policy if exists support_audio_admin_insert on storage.objects;
 create policy support_audio_admin_insert on storage.objects
 for insert to authenticated
 with check (bucket_id='support-audio' and public.is_active_admin());
+
+-- RAQVOR V2.11 — suporte profissional e modo de assistência completo
+-- Admin com sessão de suporte pode consultar E alterar o app_state do cliente.
+drop policy if exists app_state_admin_support_update on public.app_state;
+create policy app_state_admin_support_update on public.app_state
+for update to authenticated
+using (
+  exists (
+    select 1 from public.finance_workspaces w
+    where w.id = workspace_id
+      and public.has_support_access(w.owner_user_id)
+  )
+)
+with check (
+  exists (
+    select 1 from public.finance_workspaces w
+    where w.id = workspace_id
+      and public.has_support_access(w.owner_user_id)
+  )
+);
+
+-- Mensagens de suporte por voz podem ser enviadas tanto pelo cliente quanto pelo suporte.
+drop policy if exists support_audio_admin_insert on storage.objects;
+create policy support_audio_admin_insert on storage.objects
+for insert to authenticated
+with check (
+  bucket_id='support-audio'
+  and public.is_active_admin()
+);
+
+-- Admin precisa conseguir ler/baixar áudio de atendimento.
+drop policy if exists support_audio_admin_read on storage.objects;
+create policy support_audio_admin_read on storage.objects
+for select to authenticated
+using (
+  bucket_id='support-audio'
+  and public.is_active_admin()
+);
+
+-- Realtime para mensagens: conversa instantânea estilo mensageria.
+alter table public.support_messages replica identity full;
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname='supabase_realtime'
+      and schemaname='public'
+      and tablename='support_messages'
+  ) then
+    alter publication supabase_realtime add table public.support_messages;
+  end if;
+end $$;

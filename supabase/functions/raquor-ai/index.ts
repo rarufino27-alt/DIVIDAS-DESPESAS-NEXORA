@@ -77,7 +77,7 @@ Ciclo financeiro: ${JSON.stringify(context.cycle ?? {})}`
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openaiKey}` },
     body: JSON.stringify({
-      model: Deno.env.get('RAQVOR_AI_MODEL') || 'gpt-5.6',
+      model: Deno.env.get('RAQVOR_AI_MODEL') || 'gpt-5.6-luna',
       store: false,
       instructions: system,
       input: messages,

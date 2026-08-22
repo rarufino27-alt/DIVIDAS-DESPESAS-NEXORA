@@ -1,1 +1,1 @@
-{"name":"RAQVOR","short_name":"RAQVOR","start_url":"./","display":"standalone","background_color":"#F6F8FA","theme_color":"#092B61","icons":[{"src":"assets/raquor-logo.svg","sizes":"any","type":"image/svg+xml"}]}
+{"name":"RAQVOR Desktop","short_name":"RAQVOR","start_url":"./","display":"standalone","background_color":"#f4f7fa","theme_color":"#071a2b","icons":[{"src":"assets/icon-192x192.png","sizes":"192x192","type":"image/png"},{"src":"assets/icon-512x512.png","sizes":"512x512","type":"image/png"}]}
