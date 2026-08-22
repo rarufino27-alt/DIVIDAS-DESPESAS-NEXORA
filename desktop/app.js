@@ -12,6 +12,8 @@ const SUPABASE_URL='https://zowmlsusgnzqskuplxcu.supabase.co';
 const SUPABASE_KEY='sb_publishable_vkoEbQBCeSDsoFRZxJ4VoA_gVWhQf5M';
 let supabaseClient=null;
 let supabaseWorkspaceId=null;
+let currentUser=null;
+let currentProfile=null;
 let syncTimer=null;
 let syncInProgress=false;
 let syncReady=false;
@@ -121,11 +123,39 @@ function showUserMenu(user){
   const side=document.querySelector('#sidebar'); if(!side)return;
   let el=document.querySelector('#user-panel');
   if(!el){el=document.createElement('div');el.id='user-panel';side.insertBefore(el,side.querySelector('.side-foot'));}
-  const name=esc(user?.user_metadata?.full_name||'Usuário RAQVOR');
-  const phone=esc(user?.user_metadata?.phone||user?.phone||'');
-  el.innerHTML=`<div class="user-avatar">${name.charAt(0).toUpperCase()}</div><div class="user-meta"><b>${name}</b><small>${phone}</small></div><button id="logout-btn" title="Sair">↪</button>`;
+  const name=esc(currentProfile?.full_name||user?.user_metadata?.full_name||'Usuário RAQVOR');
+  const phone=esc(currentProfile?.phone||user?.user_metadata?.phone||user?.phone||'');
+  const avatar=currentProfile?.avatar_url?`<img class="user-avatar-img" src="${esc(currentProfile.avatar_url)}" alt="Foto de perfil">`:`<div class="user-avatar">${name.charAt(0).toUpperCase()}</div>`;
+  el.innerHTML=`${avatar}<div class="user-meta"><b>${name}</b><small>${phone}</small></div><button id="profile-btn" title="Meu perfil">⚙</button><button id="logout-btn" title="Sair">↪</button>`;
+  document.querySelector('#profile-btn').onclick=()=>openProfile();
   document.querySelector('#logout-btn').onclick=async()=>{await supabaseClient.auth.signOut();location.reload()};
 }
+async function refreshProfile(){
+  if(!currentUser)return;
+  const r=await supabaseClient.from('profiles').select('*').eq('id',currentUser.id).maybeSingle();
+  if(r.data){currentProfile=r.data;showUserMenu(currentUser)}
+}
+async function uploadProfileAvatar(file){
+  if(!currentUser||!file)return;
+  if(file.size>10*1024*1024)throw new Error('A foto deve ter no máximo 10 MB.');
+  const safe=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+  const path=`${currentUser.id}/${Date.now()}-${safe}`;
+  const up=await supabaseClient.storage.from('profile-avatars').upload(path,file,{contentType:file.type||'application/octet-stream',upsert:false});
+  if(up.error)throw up.error;
+  const pub=supabaseClient.storage.from('profile-avatars').getPublicUrl(path).data.publicUrl;
+  const r=await supabaseClient.from('profiles').update({avatar_url:pub}).eq('id',currentUser.id);
+  if(r.error)throw r.error;
+  currentProfile={...(currentProfile||{}),avatar_url:pub};
+  return pub;
+}
+function openProfile(){
+  const p=currentProfile||{}; const el=document.createElement('div'); el.className='modal open';
+  el.innerHTML=`<div class="modal-card profile-modal"><div class="profile-head"><div><span class="eyebrow">MINHA CONTA</span><h2>Meu perfil</h2><p>Seus dados de contato são usados para identificar e atender sua conta.</p></div><button class="close" id="profile-close">×</button></div><form id="profile-form" class="form"><div class="profile-photo"><div id="profile-photo-preview" class="profile-photo-preview">${p.avatar_url?`<img src="${esc(p.avatar_url)}" alt="Foto">`:`<span>${esc((p.full_name||currentUser?.email||'R').charAt(0).toUpperCase())}</span>`}</div><div><label class="btn secondary file-btn">Carregar foto<input id="profile-photo" type="file" accept="image/*,.heic,.heif,.avif,.webp"></label><small>JPG, PNG, WEBP, GIF, AVIF, HEIC/HEIF quando suportado. Até 10 MB.</small></div></div><div class="field"><label>Nome completo</label><input id="profile-name" required value="${esc(p.full_name||currentUser?.user_metadata?.full_name||'')}"></div><div class="field"><label>Número de celular</label><input id="profile-phone" inputmode="tel" value="${esc(p.phone||currentUser?.phone||'')}"></div><div class="field"><label>E-mail</label><input value="${esc(currentUser?.email||'')}" disabled></div><div class="actions"><button class="btn primary">Salvar perfil</button><button type="button" class="btn secondary" id="profile-cancel">Cancelar</button></div></form></div>`;
+  document.body.appendChild(el); el.querySelector('#profile-close').onclick=()=>el.remove(); el.querySelector('#profile-cancel').onclick=()=>el.remove(); el.onclick=e=>{if(e.target===el)el.remove()};
+  el.querySelector('#profile-photo').onchange=async e=>{const f=e.target.files?.[0];if(!f)return;try{const url=await uploadProfileAvatar(f);el.querySelector('#profile-photo-preview').innerHTML=`<img src="${esc(url)}" alt="Foto">`;toast('Foto atualizada.')}catch(err){toast('Não foi possível carregar a foto: '+err.message)}};
+  el.querySelector('#profile-form').onsubmit=async e=>{e.preventDefault();try{const full_name=el.querySelector('#profile-name').value.trim(),phone=el.querySelector('#profile-phone').value.trim();const r=await supabaseClient.from('profiles').update({full_name,phone}).eq('id',currentUser.id);if(r.error)throw r.error;await supabaseClient.auth.updateUser({data:{full_name,phone}});currentProfile={...(currentProfile||{}),full_name,phone};showUserMenu(currentUser);el.remove();toast('Perfil atualizado.')}catch(err){toast('Não foi possível salvar: '+err.message)}};
+}
+
 async function ensureWorkspace(){
   const {data,error}=await supabaseClient.rpc('get_or_create_my_workspace');
   if(error)throw error;
@@ -134,6 +164,9 @@ async function ensureWorkspace(){
   return supabaseWorkspaceId;
 }
 async function startAuthenticatedApp(user){
+  currentUser=user;
+  const pr=await supabaseClient.from('profiles').select('*').eq('id',user.id).maybeSingle();
+  currentProfile=pr.data||{id:user.id,full_name:user.user_metadata?.full_name||'',phone:user.user_metadata?.phone||user.phone||'',avatar_url:''};
   const auth=document.querySelector('#auth-screen');if(auth)auth.style.display='none';
   const app=document.querySelector('.app');if(app)app.style.display='grid';
   showUserMenu(user); try{const ar=await supabaseClient.from('user_access_controls').select('status,reason').eq('user_id',user.id).maybeSingle();if(ar.data&&ar.data.status!=='active'){await supabaseClient.auth.signOut();throw new Error('Seu acesso está bloqueado. '+(ar.data.reason||''));}}catch(e){if(e.message?.includes('bloqueado'))throw e;}
@@ -163,7 +196,7 @@ async function connectUserWorkspace(){
     const remoteState=stateRes.data?.state||null;
     if(remoteState){applyRemoteState(remoteState,stateRes.data.updated_at);syncDirty=false;render(view)}
     else {await syncNow()}
-    syncReady=true;subscribeRealtime();supabaseClient.channel('raquor-access-'+user.id).on('postgres_changes',{event:'*',schema:'public',table:'user_access_controls',filter:`user_id=eq.${user.id}`},async p=>{if(p.new?.status&&p.new.status!=='active'){toast('Seu acesso foi bloqueado.');await supabaseClient.auth.signOut();location.reload()}}).subscribe();await pullRemoteState({force:false});setSyncStatus('V2.11 • Supabase conectado',true);
+    syncReady=true;subscribeRealtime();supabaseClient.channel('raquor-access-'+currentUser.id).on('postgres_changes',{event:'*',schema:'public',table:'user_access_controls',filter:`user_id=eq.${user.id}`},async p=>{if(p.new?.status&&p.new.status!=='active'){toast('Seu acesso foi bloqueado.');await supabaseClient.auth.signOut();location.reload()}}).subscribe();await pullRemoteState({force:false});setSyncStatus('V2.11 • Supabase conectado',true);
   }catch(err){console.error('[RAQVOR][SUPABASE]',err);setSyncStatus('V2.11 • Supabase indisponível');toast(authErrorMessage(err))}
 }
 async function initSupabase(){
@@ -474,3 +507,5 @@ function bindGlobal(){
   document.querySelectorAll('[data-dd-tab]').forEach(b=>b.onclick=()=>debtsExpenses(b.dataset.ddTab));
   document.querySelectorAll('[data-card-tab]').forEach(b=>b.onclick=()=>debtsExpenses('cartoes',b.dataset.cardTab));
 }
+
+window.addEventListener('load',()=>initSupabase().catch(err=>{console.error('[RAQVOR][BOOT]',err);showAuth('login','Não foi possível iniciar o RAQVOR: '+authErrorMessage(err));}));
